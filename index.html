@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Acre Deal — Campaign Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{--bg:#F3F4F6;--surface:#FFF;--surface2:#F0F1F4;--surface3:#E5E7EB;--border:#D1D5DB;--text:#1F2937;--text2:#6B7280;--text3:#9CA3AF;--accent:#4F6BED;--realtor:#2563EB;--realtor-bg:#EFF4FF;--buyer:#059669;--buyer-bg:#ECFDF5;--neighbor:#D97706;--neighbor-bg:#FFFBEB;--investor:#7C3AED;--investor-bg:#F5F3FF;--critical:#DC2626;--critical-bg:rgba(220,38,38,.08);--success:#059669;--warning:#D97706;--call-badge:#DB2777;--radius:8px;--radius-sm:5px;--shadow:0 2px 8px rgba(0,0,0,.08)}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh}
+.app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:auto 1fr;height:100vh}
+.header{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;gap:24px;z-index:10;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.header h1{font-size:18px;font-weight:700;letter-spacing:-.3px;white-space:nowrap}.header h1 span{color:var(--accent)}
+.header-stats{display:flex;gap:16px;margin-left:auto;flex-wrap:wrap}
+.stat-pill{background:var(--surface2);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+.stat-pill .num{font-family:'Space Mono',monospace;font-weight:700;color:var(--accent)}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.sidebar-header{padding:16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:5}
+.sidebar-header h2{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.sidebar-header h2 .count{background:var(--accent);color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;font-family:'Space Mono',monospace}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap}
+.filter-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:11px;padding:4px 10px;border-radius:14px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.15s}
+.filter-btn:hover{border-color:var(--accent);color:var(--text)}.filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.backlog-list{padding:8px;flex:1;min-height:200px}.backlog-section{margin-bottom:12px}
+.backlog-section-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;padding:8px 8px 4px}
+.calendar-wrap{overflow:auto;padding:16px}.calendar-controls{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.cal-nav{background:var(--surface2);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:var(--radius-sm);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.cal-nav:hover{background:var(--surface3)}
+.cal-month{font-size:16px;font-weight:600;min-width:180px;text-align:center}
+.calendar{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border-radius:var(--radius);overflow:hidden}
+.cal-header-cell{background:var(--surface);padding:10px;text-align:center;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.cal-day{background:var(--surface);min-height:140px;padding:8px;display:flex;flex-direction:column;transition:background .15s;position:relative}
+.cal-day.today{background:rgba(79,107,237,.05)}.cal-day.past{opacity:.45}
+.cal-day.drop-target{background:rgba(79,107,237,.06);outline:2px dashed var(--accent);outline-offset:-2px}
+.cal-day.outside{background:#F9FAFB;opacity:.35;pointer-events:none}
+.cal-day-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.cal-day-num{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--text2)}
+.cal-day.today .cal-day-num{color:var(--accent)}
+.cal-day-stats{display:flex;align-items:center;gap:5px}
+.cal-day-profit{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:#059669}
+.cal-day-pod{font-family:'Space Mono',monospace;font-size:9px;font-weight:600;color:var(--text3);background:var(--surface2);padding:1px 5px;border-radius:6px}
+.cal-day-count{font-size:10px;font-weight:700;font-family:'Space Mono',monospace;padding:2px 6px;border-radius:8px}
+.cal-day-count.ok{background:rgba(16,185,129,.15);color:var(--success)}.cal-day-count.low{background:rgba(239,68,68,.15);color:var(--critical)}.cal-day-count.zero{background:var(--surface2);color:var(--text3)}
+.cal-day-cards{flex:1;display:flex;flex-direction:column;gap:3px;overflow-y:auto;min-height:40px}
+.card{padding:6px 8px;border-radius:var(--radius-sm);font-size:11px;cursor:grab;border-left:3px solid;position:relative;transition:transform .1s,box-shadow .1s;user-select:none}
+.card:hover{transform:translateY(-1px);box-shadow:var(--shadow);z-index:2}.card:active{cursor:grabbing;opacity:.8}.card.dragging{opacity:.4}
+.card.realtor{background:var(--realtor-bg);border:1px solid #DBEAFE;border-left:3px solid var(--realtor)}
+.card.buyer{background:var(--buyer-bg);border:1px solid #D1FAE5;border-left:3px solid var(--buyer)}
+.card.neighbor{background:var(--neighbor-bg);border:1px solid #FEF3C7;border-left:3px solid var(--neighbor)}
+.card.investor{background:var(--investor-bg);border:1px solid #EDE9FE;border-left:3px solid var(--investor)}
+.card-top{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.card-type{font-weight:700;font-size:11px;white-space:nowrap}
+.card-badges{display:flex;gap:3px;align-items:center;flex-shrink:0}
+.badge{font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;font-family:'Space Mono',monospace}
+.badge-call{background:var(--call-badge);color:#fff}.badge-text{background:var(--surface3);color:var(--text2)}.badge-round{background:var(--surface3);color:var(--text2)}
+.badge-jose{background:#DBEAFE;color:#1E40AF}.badge-gab{background:#FDE68A;color:#92400E}
+.card-meta{display:flex;gap:8px;margin-top:2px;font-size:9px;color:var(--text3)}.card-meta span{display:flex;align-items:center;gap:2px}
+.card-address-meta{max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-suggestion{font-size:9px;color:#B45309;margin-top:3px;font-style:italic;display:none}.card:hover .card-suggestion{display:block}
+.card .remove-btn{position:absolute;top:2px;right:4px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;display:none;line-height:1;padding:2px}
+.card:hover .remove-btn{display:block;color:var(--critical)}
+.card-note-indicator{font-size:9px;color:var(--accent);margin-top:2px;font-weight:500}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:100;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0;max-width:580px;width:94%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 40px rgba(0,0,0,.15)}
+.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border)}
+.modal-header-top{display:flex;justify-content:space-between;align-items:flex-start}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:2px}.modal-subtitle{font-size:12px;color:var(--text2)}
+.modal-close-x{background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:0 4px;line-height:1}.modal-close-x:hover{color:var(--text)}
+.modal-tags{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.modal-tag{font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px}
+.modal-tag.t-realtor{background:#DBEAFE;color:#1D4ED8}.modal-tag.t-buyer{background:#D1FAE5;color:#047857}
+.modal-tag.t-neighbor{background:#FEF3C7;color:#B45309}.modal-tag.t-investor{background:#EDE9FE;color:#6D28D9}
+.modal-tag.t-call{background:#FCE7F3;color:#BE185D}.modal-tag.t-text{background:var(--surface2);color:var(--text2)}
+.modal-tag.t-round{background:var(--surface2);color:var(--text2)}.modal-tag.t-critical{background:#FEE2E2;color:#DC2626}
+.modal-tag.t-urgent{background:#FEF3C7;color:#D97706}.modal-tag.t-owned{background:#DBEAFE;color:#1E40AF}
+.modal-body{padding:16px 24px 20px}.modal-section{margin-bottom:18px}
+.modal-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--surface2)}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}
+.modal-field{display:flex;justify-content:space-between;padding:5px 0;font-size:12px}.modal-field .fl{color:var(--text2)}.modal-field .fv{font-weight:600;text-align:right}
+.modal-field .fv.positive{color:#059669}.modal-field .fv.negative{color:#DC2626}.modal-field .fv.highlight{color:var(--accent)}
+.modal-reasoning{background:#F0F4FF;border:1px solid #DBEAFE;border-radius:8px;padding:14px 16px;font-size:12px;line-height:1.6;color:#1E3A5F}
+.modal-reasoning strong{font-weight:700}.modal-reasoning .reason-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);margin-bottom:6px;display:block}
+.modal-history-table{width:100%;font-size:11px;border-collapse:collapse}
+.modal-history-table th{text-align:left;padding:6px 8px;background:var(--surface2);color:var(--text2);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.modal-history-table td{padding:5px 8px;border-bottom:1px solid var(--surface2)}.modal-history-table tr:last-child td{border-bottom:none}
+.modal-history-empty{font-size:12px;color:var(--text3);font-style:italic;padding:12px 0}
+.history-scroll{max-height:160px;overflow-y:auto;border:1px solid var(--surface2);border-radius:6px}
+.modal-footer{padding:12px 24px 20px;display:flex;justify-content:flex-end}
+.modal-close-btn{background:var(--accent);color:#fff;border:none;padding:8px 28px;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px}.modal-close-btn:hover{opacity:.9}
+.modal-notes{width:100%;min-height:80px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text);background:var(--surface2);resize:vertical;line-height:1.5;outline:none;transition:border-color .15s}
+.modal-notes:focus{border-color:var(--accent)}.modal-notes::placeholder{color:var(--text3)}
+.urgency-tag{font-size:9px;font-weight:600;padding:1px 6px;border-radius:8px;margin-left:4px;background:#F3F4F6;color:#6B7280;border:1px solid #E5E7EB}
+.urgency-tag.tah-owned{background:#DBEAFE;color:#1E40AF;border-color:#BFDBFE}
+.urgency-tag.expired-tag{background:#FEE2E2;color:#DC2626;border-color:#FECACA}
+.urgency-tag.urgency-red{background:#FEE2E2;color:#DC2626;border-color:#FECACA}
+.legend{display:flex;gap:14px;align-items:center}.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}.legend-dot{width:10px;height:10px;border-radius:3px}
+.empty-day{font-size:10px;color:var(--text3);text-align:center;padding:20px 4px;font-style:italic}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+/* Upload Panel */
+.upload-panel{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.upload-panel.hidden{display:none}
+.upload-box{background:var(--surface);border:2px dashed var(--border);border-radius:16px;padding:48px;text-align:center;max-width:500px;width:90%}
+.upload-box h2{font-size:22px;font-weight:700;margin-bottom:8px;color:var(--text)}.upload-box h2 span{color:var(--accent)}
+.upload-box p{font-size:14px;color:var(--text2);margin-bottom:24px}
+.upload-box label{display:block;margin-bottom:12px;text-align:left;font-size:13px;font-weight:600;color:var(--text)}
+.upload-box input[type=file]{width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;margin-bottom:16px;background:var(--surface2)}
+.upload-box button{background:var(--accent);color:#fff;border:none;padding:12px 32px;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;width:100%}
+.upload-box button:hover{opacity:.9}.upload-box button:disabled{opacity:.5;cursor:not-allowed}
+.upload-status{margin-top:16px;font-size:13px;color:var(--text2);min-height:20px}
+.upload-status.error{color:var(--critical)}.upload-status.success{color:var(--success)}
+.upload-mini{display:flex;align-items:center;gap:8px;margin-left:8px}
+.upload-mini label{font-size:11px;padding:5px 12px;border-radius:14px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;font-weight:600;color:var(--text2)}
+.upload-mini label:hover{border-color:var(--accent);color:var(--text)}
+.upload-mini input{display:none}
+.save-indicator{font-size:10px;color:var(--success);font-weight:600;margin-left:8px;opacity:0;transition:opacity .3s}
+.save-indicator.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- UPLOAD PANEL (shown when no data) -->
+<div class="upload-panel" id="upload-panel">
+  <div class="upload-box">
+    <h2>The Acre Deal — <span>Campaign Planner</span></h2>
+    <p>Upload your CSV files to generate the campaign schedule</p>
+    <label>Current Properties Pipeline (.csv)</label>
+    <input type="file" id="file-pipeline" accept=".csv">
+    <label>Campaign History (.csv)</label>
+    <input type="file" id="file-history" accept=".csv">
+    <button id="process-btn" onclick="processUpload()">Generate Campaign Plan</button>
+    <div class="upload-status" id="upload-status"></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="main-app" style="display:none">
+  <div class="header">
+    <h1>The Acre Deal — <span>Campaign Planner</span></h1>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--realtor)"></div>Realtor</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--buyer)"></div>Buyer</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--neighbor)"></div>Neighbor</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--investor)"></div>Investor</div>
+      <div class="legend-item"><span style="background:var(--call-badge);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700">CALL</span>Cold Call</div>
+      <div class="legend-item" style="margin-left:8px;padding-left:8px;border-left:1px solid var(--border)"><span style="background:#DBEAFE;color:#1E40AF;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700">Jose</span></div>
+      <div class="legend-item"><span style="background:#FDE68A;color:#92400E;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700">Gab</span></div>
+    </div>
+    <div class="upload-mini">
+      <label for="refresh-pipeline">📂 Refresh CSVs</label>
+      <input type="file" id="refresh-pipeline" accept=".csv" multiple onchange="handleRefreshUpload(this.files)">
+      <span class="save-indicator" id="save-indicator">✓ Saved</span>
+    </div>
+    <div class="header-stats">
+      <div class="stat-pill">Properties <span class="num" id="stat-props">0</span></div>
+      <div class="stat-pill">Scheduled <span class="num" id="stat-scheduled">0</span></div>
+      <div class="stat-pill">Campaign Queue <span class="num" id="stat-backlog">0</span></div>
+      <div class="stat-pill">Avg/Day <span class="num" id="stat-avg">0</span></div>
+      <div class="stat-pill" style="border:1px solid #D1FAE5">Total Profit Chasing <span class="num" id="stat-profit" style="color:#059669">$0</span></div>
+    </div>
+  </div>
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>Campaign Queue <span class="count" id="backlog-count">0</span></h2>
+      <div class="filter-row" id="filters">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="core">Core</button>
+        <button class="filter-btn" data-filter="calling">Calling</button>
+        <button class="filter-btn" data-filter="reengagement">Round 2</button>
+        <button class="filter-btn" data-filter="deep_push">Round 3</button>
+      </div>
+    </div>
+    <div class="backlog-list" id="backlog"></div>
+  </div>
+  <div class="calendar-wrap">
+    <div class="calendar-controls">
+      <button class="cal-nav" id="prev-month">‹</button>
+      <div class="cal-month" id="cal-month-label"></div>
+      <button class="cal-nav" id="next-month">›</button>
+      <button class="filter-btn" id="auto-schedule-btn" style="margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;padding:6px 16px;font-weight:600;">↻ Auto-Schedule</button>
+      <button class="filter-btn" id="clear-btn" style="padding:6px 16px;">Clear All</button>
+    </div>
+    <div class="calendar" id="calendar"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal"><div class="modal" id="modal-content"></div></div>
+
+<script>
+// ===== FIREBASE =====
+firebase.initializeApp({
+  apiKey:"AIzaSyDND7ZmxWNmY1SQ0gfv1DRgjQ2FQcHdqIU",authDomain:"dispo-campaign-planner.firebaseapp.com",
+  projectId:"dispo-campaign-planner",storageBucket:"dispo-campaign-planner.firebasestorage.app",
+  messagingSenderId:"903508405312",appId:"1:903508405312:web:ff912a1a96a301e389c3a5"
+});
+const db = firebase.firestore();
+
+// ===== STATE =====
+let RAW_DATA = {properties:[], tasks:[]};
+const state = {tasks:[],schedule:{},backlog:[],taskNotes:{},currentMonth:null,activeFilter:'all',dragTask:null,_wasDragged:false,taskMap:{},propMap:{}};
+
+// ===== CONSTANTS =====
+const OUTREACH_CLASS={'Realtors Reach Out':'realtor','Buyer Base Reach Out':'buyer','Neighbor Reach Out':'neighbor','InvestorBase Reach Out':'investor'};
+const OUTREACH_SHORT={'Realtors Reach Out':'Realtor','Buyer Base Reach Out':'Buyer Base','Neighbor Reach Out':'Neighbor','InvestorBase Reach Out':'Investor'};
+const MIN_PER_DAY=10, COOLDOWN_DAYS=6;
+function getToday(){return new Date();} // Always use actual current date
+
+// ===== HELPERS =====
+function dateStr(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function parseDate(s){const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);}
+function isWeekday(d){return d.getDay()>=1&&d.getDay()<=5;}
+function isSameDay(a,b){return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();}
+function daysBetween(a,b){return Math.round((b-a)/(1000*60*60*24));}
+function shortAddr(addr){if(!addr)return'—';const p=addr.split(',');let s=p[0].trim();if(s.length>22)s=s.substring(0,20)+'…';const c=p.length>1?p[1].trim():'';return c?`${s}, ${c}`:s;}
+function formatMoney(n){return n<0?'-$'+Math.abs(n).toLocaleString():'$'+n.toLocaleString();}
+function getBusinessDays(start,count){const days=[];let d=new Date(start);while(days.length<count){if(isWeekday(d))days.push(new Date(d));d.setDate(d.getDate()+1);}return days;}
+
+// ===== CSV PROCESSING =====
+function processCSVData(pipelineRows, historyRows) {
+  const doneObjectives={}, doneCombos={}, histByListing={};
+  historyRows.forEach(c => {
+    const lid=(c['The Market Hub #']||'').trim(), obj=(c['Campaign Objective']||'').trim(), ch=(c['Outreach Channel']||'').trim();
+    if(!obj||!lid) return;
+    if(!doneObjectives[lid]) doneObjectives[lid]=new Set();
+    doneObjectives[lid].add(obj);
+    if(ch){if(!doneCombos[lid])doneCombos[lid]=new Set();doneCombos[lid].add(obj+'|'+ch);}
+    if(!histByListing[lid])histByListing[lid]=[];
+    histByListing[lid].push({objective:obj,channel:ch,runDate:(c['Campaign Run Date']||'').trim(),members:(c['Actual Campaign Members']||'').trim(),counties:((c['Counties (if Multiple Counties)']||'').trim()).substring(0,150)});
+  });
+  
+  const coreText=[['Realtors Reach Out','Cold Texting',false],['Buyer Base Reach Out','Cold Texting',false],['Neighbor Reach Out','Cold Texting',true],['InvestorBase Reach Out','Cold Texting',false]];
+  const calling=[['Neighbor Reach Out','Cold Calling',true],['InvestorBase Reach Out','Cold Calling',false]];
+  const sugR2={['Realtors Reach Out|Cold Texting']:'Expand to additional surrounding counties for broader reach',['Buyer Base Reach Out|Cold Texting']:'Follow-up campaign to re-engage buyer list with updated pricing',['Neighbor Reach Out|Cold Texting']:'Increase search radius by 2-3 miles from subject property',['Neighbor Reach Out|Cold Calling']:'Cold call neighbors in expanded radius',['InvestorBase Reach Out|Cold Texting']:'Target different neighboring cities for fresh investor leads',['InvestorBase Reach Out|Cold Calling']:'Cold call investors in new target cities'};
+  const sugR3={['Realtors Reach Out|Cold Texting']:'Round 3: Cast wider net — consider 3+ county radius',['Buyer Base Reach Out|Cold Texting']:'Round 3: Fresh buyer list pull or statewide push',['Neighbor Reach Out|Cold Texting']:'Round 3: Maximum radius — cast the widest net',['InvestorBase Reach Out|Cold Texting']:'Round 3: Expand to neighboring state investor pools'};
+  const typeMod={'Realtors Reach Out':0,'Buyer Base Reach Out':-5,'Neighbor Reach Out':-10,'InvestorBase Reach Out':-25};
+  
+  const properties=[], allTasks=[];
+  let tid=0;
+  
+  pipelineRows.forEach(p => {
+    const lid=(p['Main Listing']||'').trim();
+    if(!lid) return;
+    const neighborOk=(p['Neighbor Campaign']||'').trim()==='Yes';
+    let profit=parseInt((p['Potential Profit']||'0').replace(/,/g,''))||0;
+    const exp=parseInt(p['# of Days to Expiration']||'0')||0;
+    const doneObj=doneObjectives[lid]||new Set();
+    const doneCb=doneCombos[lid]||new Set();
+    
+    // Override Burnet TX profit
+    if(lid==='L - 1403') profit=8000;
+    
+    const missingCore=[];
+    coreText.forEach(([obj,ch,needsN])=>{if(needsN&&!neighborOk)return;if(!doneObj.has(obj))missingCore.push([obj,ch]);});
+    const missingCalls=[];
+    calling.forEach(([obj,ch,needsN])=>{if(needsN&&!neighborOk)return;if(!doneCb.has(obj+'|'+ch))missingCalls.push([obj,ch]);});
+    const coreDone=missingCore.length===0;
+    
+    let score=0;
+    if(missingCore.length>=3)score+=200;
+    if(exp>0){if(exp<=14)score+=150;else if(exp<=30)score+=100;else if(exp<=60)score+=50;else score+=20;}
+    if(profit>=30000)score+=80;else if(profit>=15000)score+=50;else if(profit>=5000)score+=20;else if(profit>0)score+=5;
+    score+=missingCore.length*40+missingCalls.length*15;
+    
+    const prop={id:lid,state:(p['State']||'').trim(),county:(p['County']||'').trim(),address:(p['Property Address']||'').trim().replace(/"/g,''),
+      price:(p['Current Cash Price']||'').trim(),profit,dom:parseInt(p['Website DOM']||'0')||0,expDays:exp,
+      priceDrops:parseInt(p['# of Price Drops']||'0')||0,neighborOk,pod:(p['POD']||'').trim(),acreage:(p['Total Property Size']||'').trim(),
+      score,missingCore,missingCalls,coreDone,mls:(p['MLS']||'').trim(),listedMLS:(p['Listed on MLS']||'').trim(),
+      listedFB:(p['Listed on FB?']||'').trim(),listingStatus:(p['Listing Status']||'').trim(),propertyType:(p['Property Type']||'').trim(),
+      zillowSaves:(p['Zillow Saves']||'').trim(),mlsSaves:(p['MLS Saves']||'').trim(),mlsDOM:(p['MLS DOM']||'').trim(),
+      totalLeads:(p['Total Sourced Leads']||'').trim(),totalQualified:(p['Total Qualified Leads']||'').trim(),
+      priceDropDate:(p['Price Drop Date']||'').trim(),priceDropPct:(p['Price Drop %']||'').trim(),
+      ddStatus:(p['Property DD Status']||'').trim(),titleStatus:(p['Title Status']||'').trim(),
+      history:histByListing[lid]||[],historyCount:(histByListing[lid]||[]).length,
+      salesHub:(p['The Sales Hub']||'').trim(),lastCashPrice:(p['Last Cash List Price']||'').trim()
+    };
+    properties.push(prop);
+    
+    // Generate tasks
+    missingCore.forEach(([obj,ch])=>{tid++;const s=Math.max(score+(typeMod[obj]||0),1);allTasks.push({id:`T${String(tid).padStart(3,'0')}`,propertyId:lid,objective:obj,channel:ch,round:1,priority:'core',score:s,state:prop.state,county:prop.county,address:prop.address,profit,expDays:exp,suggestion:''});});
+    missingCalls.forEach(([obj,ch])=>{tid++;const s=Math.max(score-20+(typeMod[obj]||0),1);allTasks.push({id:`T${String(tid).padStart(3,'0')}`,propertyId:lid,objective:obj,channel:ch,round:1,priority:'calling',score:s,state:prop.state,county:prop.county,address:prop.address,profit,expDays:exp,suggestion:''});});
+    
+    const allOutreach=[...coreText,...calling];
+    allOutreach.forEach(([obj,ch,needsN])=>{
+      if(needsN&&!neighborOk)return;
+      const isMissing=missingCore.some(([o,c])=>o===obj&&c===ch)||missingCalls.some(([o,c])=>o===obj&&c===ch);
+      if(!isMissing){tid++;const s=Math.max(score-40+(typeMod[obj]||0),1);allTasks.push({id:`T${String(tid).padStart(3,'0')}`,propertyId:lid,objective:obj,channel:ch,round:2,priority:'reengagement',score:s,state:prop.state,county:prop.county,address:prop.address,profit,expDays:exp,suggestion:sugR2[obj+'|'+ch]||''});}
+    });
+    if(profit>=15000||(exp>0&&exp<=30)){
+      coreText.forEach(([obj,ch,needsN])=>{if(needsN&&!neighborOk)return;tid++;const s=Math.max(score-80+(typeMod[obj]||0),1);allTasks.push({id:`T${String(tid).padStart(3,'0')}`,propertyId:lid,objective:obj,channel:ch,round:3,priority:'deep_push',score:s,state:prop.state,county:prop.county,address:prop.address,profit,expDays:exp,suggestion:sugR3[obj+'|'+ch]||''});});
+    }
+  });
+  
+  allTasks.sort((a,b)=>b.score-a.score);
+  return {properties, tasks:allTasks};
+}
+
+// ===== SCHEDULING ALGORITHM =====
+function autoSchedule(){
+  const TODAY=getToday();
+  const days=getBusinessDays(TODAY,10);const dayStrs=days.map(d=>dateStr(d));const POD_MIN=5;
+  state.schedule={};dayStrs.forEach(ds=>state.schedule[ds]=[]);
+  const propDays={},propObjDays={},propObjChDays={};const scheduled=new Set();
+  const podCount={};dayStrs.forEach(ds=>podCount[ds]={Jose:0,Gabriel:0});
+  function getPod(task){const p=state.propMap[task.propertyId];return p?p.pod:'Jose';}
+  function canPlace(task,di){
+    if(task.expDays>0){const sd=parseDate(dayStrs[di]);const df=daysBetween(TODAY,sd);if(task.expDays-df<=0)return false;}
+    const key=`${task.propertyId}|${task.objective}`;
+    if(task.channel==='Cold Calling'){const tk=`${key}|Cold Texting`;if(propObjChDays[tk]&&propObjChDays[tk].has(di))return false;}
+    else if(task.channel==='Cold Texting'){const ck=`${key}|Cold Calling`;if(propObjChDays[ck]&&propObjChDays[ck].has(di))return false;}
+    return true;
+  }
+  function canPlacePod(task,di){if(!canPlace(task,di))return false;const pod=getPod(task);if((podCount[dayStrs[di]][pod]||0)>=POD_MIN+4)return false;return true;}
+  function place(task,di){
+    state.schedule[dayStrs[di]].push(task.id);scheduled.add(task.id);
+    if(!propDays[task.propertyId])propDays[task.propertyId]=new Set();propDays[task.propertyId].add(di);
+    const ok=`${task.propertyId}|${task.objective}`;if(!propObjDays[ok])propObjDays[ok]=new Set();propObjDays[ok].add(di);
+    const ck=`${task.propertyId}|${task.objective}|${task.channel}`;if(!propObjChDays[ck])propObjChDays[ck]=new Set();propObjChDays[ck].add(di);
+    podCount[dayStrs[di]][getPod(task)]=(podCount[dayStrs[di]][getPod(task)]||0)+1;
+  }
+  function getCooldownMin(t){if(t.round<2)return 0;const ok=`${t.propertyId}|${t.objective}`;const ld=propObjDays[ok];if(ld&&ld.size>0)return Math.max(...ld)+COOLDOWN_DAYS;return 0;}
+  function bestDayFor(task,minDay){const pod=getPod(task);let best=-1,bestPc=999;for(let di=Math.max(0,minDay);di<dayStrs.length;di++){if(!canPlacePod(task,di))continue;const pc=podCount[dayStrs[di]][pod]||0;if(pc<bestPc){bestPc=pc;best=di;}}return best;}
+  
+  const sorted=[...state.tasks].sort((a,b)=>b.score-a.score);
+  // Step 1: Launch blitzes
+  const flp={};sorted.filter(t=>t.round===1&&t.priority==='core').forEach(t=>{if(!flp[t.propertyId])flp[t.propertyId]=[];flp[t.propertyId].push(t);});
+  const lb=Object.entries(flp).filter(([p,t])=>t.length>=3).sort((a,b)=>b[1][0].score-a[1][0].score);
+  const lbIds=new Set();
+  for(const[pid,tasks]of lb){const pod=getPod(tasks[0]);let bestDi=-1,bestPc=999;for(let di=0;di<dayStrs.length;di++){const pc=podCount[dayStrs[di]][pod]||0;if(pc+tasks.length<=POD_MIN+2&&pc<bestPc){let ok=true;for(const t of tasks)if(!canPlace(t,di)){ok=false;break;}if(ok){bestPc=pc;bestDi=di;}}}if(bestDi>=0)tasks.forEach(t=>{place(t,bestDi);lbIds.add(t.id);});}
+  
+  // Step 2: Interleave by POD
+  const rem=sorted.filter(t=>!lbIds.has(t.id));
+  function interleave(tasks){const tx=tasks.filter(t=>t.channel==='Cold Texting'),cl=tasks.filter(t=>t.channel==='Cold Calling'),r=[];let ti=0,ci=0;while(ti<tx.length||ci<cl.length){if(ti<tx.length)r.push(tx[ti++]);if(ti<tx.length)r.push(tx[ti++]);if(ci<cl.length)r.push(cl[ci++]);}return r;}
+  const jt=interleave(rem.filter(t=>getPod(t)==='Jose')),gt=interleave(rem.filter(t=>getPod(t)==='Gabriel'));
+  const queues={Jose:[...jt],Gabriel:[...gt]};let podTurn='Jose',stuck=0;
+  while((queues.Jose.length>0||queues.Gabriel.length>0)&&stuck<300){
+    const q=queues[podTurn];let placed=false;
+    for(let qi=0;qi<q.length;qi++){const t=q[qi];if(scheduled.has(t.id)){q.splice(qi,1);qi--;placed=true;continue;}
+      const md=getCooldownMin(t);const di=bestDayFor(t,md);if(di>=0){place(t,di);q.splice(qi,1);placed=true;break;}}
+    if(!placed)stuck++;else stuck=0;podTurn=podTurn==='Jose'?'Gabriel':'Jose';
+  }
+  
+  // Step 3: Enforce minimum per POD
+  for(let di=0;di<dayStrs.length;di++){const ds=dayStrs[di];for(const pod of['Jose','Gabriel']){
+    if((podCount[ds][pod]||0)>=POD_MIN)continue;
+    const up=state.tasks.filter(t=>!scheduled.has(t.id)&&getPod(t)===pod).sort((a,b)=>b.score-a.score);
+    for(const t of up){if((podCount[ds][pod]||0)>=POD_MIN)break;if(!canPlacePod(t,di))continue;const md=getCooldownMin(t);if(di<md)continue;place(t,di);}}}
+  for(let di=0;di<dayStrs.length;di++){const ds=dayStrs[di];for(const pod of['Jose','Gabriel']){
+    if((podCount[ds][pod]||0)>=POD_MIN)continue;
+    const up=state.tasks.filter(t=>!scheduled.has(t.id)&&getPod(t)===pod).sort((a,b)=>b.score-a.score);
+    for(const t of up){if((podCount[ds][pod]||0)>=POD_MIN)break;if(!canPlace(t,di))continue;place(t,di);}}}
+  
+  state.backlog=state.tasks.filter(t=>!scheduled.has(t.id)).map(t=>t.id);
+}
+
+// ===== FIRESTORE =====
+async function saveToFirestore(){
+  try{
+    await db.collection('planner').doc('data').set({
+      properties:JSON.stringify(RAW_DATA.properties),tasks:JSON.stringify(RAW_DATA.tasks),
+      schedule:JSON.stringify(state.schedule),backlog:JSON.stringify(state.backlog),
+      taskNotes:JSON.stringify(state.taskNotes),lastUpdated:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    const el=document.getElementById('save-indicator');if(el){el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2000);}
+  }catch(e){console.error('Save failed:',e);}
+}
+
+async function loadFromFirestore(){
+  try{
+    const doc=await db.collection('planner').doc('data').get();
+    if(doc.exists){
+      const d=doc.data();
+      RAW_DATA={properties:JSON.parse(d.properties||'[]'),tasks:JSON.parse(d.tasks||'[]')};
+      const savedSchedule=JSON.parse(d.schedule||'{}');
+      const savedBacklog=JSON.parse(d.backlog||'[]');
+      const savedNotes=JSON.parse(d.taskNotes||'{}');
+      return{rawData:RAW_DATA,schedule:savedSchedule,backlog:savedBacklog,notes:savedNotes};
+    }
+  }catch(e){console.error('Load failed:',e);}
+  return null;
+}
+
+// ===== INIT =====
+function initFromData(data, savedState){
+  RAW_DATA=data;
+  state.tasks=RAW_DATA.tasks.map((t,i)=>({...t,_idx:i}));
+  state.taskMap={};state.tasks.forEach(t=>state.taskMap[t.id]=t);
+  state.propMap={};RAW_DATA.properties.forEach(p=>state.propMap[p.id]=p);
+  
+  const today=getToday();
+  state.currentMonth=new Date(today.getFullYear(),today.getMonth(),1);
+  
+  if(savedState&&savedState.schedule&&Object.keys(savedState.schedule).length>0){
+    state.schedule=savedState.schedule;
+    state.backlog=savedState.backlog||[];
+    state.taskNotes=savedState.notes||{};
+  }else{
+    autoSchedule();
+  }
+  
+  document.getElementById('upload-panel').classList.add('hidden');
+  document.getElementById('main-app').style.display='grid';
+  render();
+  bindEvents();
+}
+
+// ===== UPLOAD PROCESSING =====
+async function processUpload(){
+  const pFile=document.getElementById('file-pipeline').files[0];
+  const hFile=document.getElementById('file-history').files[0];
+  const status=document.getElementById('upload-status');
+  if(!pFile||!hFile){status.textContent='Please select both files.';status.className='upload-status error';return;}
+  
+  status.textContent='Processing...';status.className='upload-status';
+  document.getElementById('process-btn').disabled=true;
+  
+  try{
+    const[pText,hText]=await Promise.all([pFile.text(),hFile.text()]);
+    const pipeline=Papa.parse(pText,{header:true,skipEmptyLines:true}).data;
+    const history=Papa.parse(hText,{header:true,skipEmptyLines:true}).data;
+    const data=processCSVData(pipeline,history);
+    
+    initFromData(data,null);
+    await saveToFirestore();
+    status.textContent='Done! Schedule generated and saved.';status.className='upload-status success';
+  }catch(e){
+    status.textContent='Error: '+e.message;status.className='upload-status error';console.error(e);
+  }
+  document.getElementById('process-btn').disabled=false;
+}
+
+async function handleRefreshUpload(files){
+  if(files.length<2){alert('Please select both CSV files (hold Ctrl/Cmd to select multiple).');return;}
+  let pText='',hText='';
+  for(const f of files){
+    const text=await f.text();
+    if(f.name.toLowerCase().includes('pipeline')||f.name.toLowerCase().includes('properties'))pText=text;
+    else hText=text;
+  }
+  if(!pText||!hText){alert('Could not identify Pipeline and History files. Make sure filenames contain "pipeline" or "properties" and "history".');return;}
+  
+  const pipeline=Papa.parse(pText,{header:true,skipEmptyLines:true}).data;
+  const history=Papa.parse(hText,{header:true,skipEmptyLines:true}).data;
+  const data=processCSVData(pipeline,history);
+  
+  // Preserve existing notes
+  const savedNotes={...state.taskNotes};
+  initFromData(data,null);
+  state.taskNotes=savedNotes;
+  await saveToFirestore();
+  render();
+}
+
+// ===== RENDERING =====
+function render(){renderCalendar();renderBacklog();updateStats();}
+
+function renderCalendar(){
+  const TODAY=getToday();const cal=document.getElementById('calendar');
+  const year=state.currentMonth.getFullYear(),month=state.currentMonth.getMonth();
+  const monthNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('cal-month-label').textContent=`${monthNames[month]} ${year}`;
+  let first=new Date(year,month,1);while(first.getDay()!==1)first.setDate(first.getDate()-1);
+  let html='';['Mon','Tue','Wed','Thu','Fri'].forEach(d=>{html+=`<div class="cal-header-cell">${d}</div>`;});
+  let current=new Date(first);
+  for(let w=0;w<5;w++){for(let dow=0;dow<5;dow++){
+    const ds=dateStr(current);const isToday=isSameDay(current,TODAY);const isPast=current<TODAY&&!isToday;const isOutside=current.getMonth()!==month;
+    const tasks=(state.schedule[ds]||[]).map(id=>state.taskMap[id]).filter(Boolean);const count=tasks.length;
+    let countClass='zero';if(count>=MIN_PER_DAY)countClass='ok';else if(count>0)countClass='low';
+    const dayNum=current.getDate();const monthLabel=current.getMonth()!==month?` ${monthNames[current.getMonth()].substring(0,3)}`:'';
+    const uniqueProps=new Set(tasks.map(t=>t.propertyId));let dayProfit=0;
+    uniqueProps.forEach(pid=>{const p=state.propMap[pid];if(p)dayProfit+=p.profit;});
+    const profitStr=dayProfit>0?'$'+dayProfit.toLocaleString():dayProfit<0?'-$'+Math.abs(dayProfit).toLocaleString():'';
+    let jc=0,gc=0;tasks.forEach(t=>{const p=state.propMap[t.propertyId];if(p&&p.pod==='Jose')jc++;else gc++;});
+    const podStr=count>0?`J:${jc} G:${gc}`:'';
+    html+=`<div class="cal-day${isToday?' today':''}${isPast?' past':''}${isOutside?' outside':''}" data-date="${ds}" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+      <div class="cal-day-header"><span class="cal-day-num">${dayNum}${monthLabel}</span><div class="cal-day-stats">
+        ${!isOutside&&count>0?`<span class="cal-day-profit">${profitStr}</span>`:''}
+        ${!isOutside&&count>0?`<span class="cal-day-pod">${podStr}</span>`:''}
+        ${!isOutside?`<span class="cal-day-count ${countClass}">${count}</span>`:''}
+      </div></div>
+      <div class="cal-day-cards" data-date="${ds}">${tasks.map(t=>renderCard(t,false,ds)).join('')}${count===0&&!isPast&&!isOutside?'<div class="empty-day">Drop campaigns here</div>':''}</div></div>`;
+    current.setDate(current.getDate()+1);if(current.getDay()===6)current.setDate(current.getDate()+2);if(current.getDay()===0)current.setDate(current.getDate()+1);
+  }}cal.innerHTML=html;
+}
+
+function renderCard(task,inBacklog,scheduledDateStr){
+  const TODAY=getToday();const cls=OUTREACH_CLASS[task.objective]||'realtor';const short=OUTREACH_SHORT[task.objective]||task.objective;
+  const addr=shortAddr(task.address);const isCall=task.channel==='Cold Calling';const prop=state.propMap[task.propertyId];
+  let urgencyHtml='';
+  if(task.expDays>0){
+    if(inBacklog||!scheduledDateStr){const rc=task.expDays<=15?' urgency-red':'';urgencyHtml=`<span class="urgency-tag${rc}">Expires from today: ${task.expDays}d</span>`;}
+    else{const sd=parseDate(scheduledDateStr);const df=daysBetween(TODAY,sd);const ae=task.expDays-df;
+      if(ae<=0)urgencyHtml='<span class="urgency-tag expired-tag">EXPIRED</span>';
+      else{const rc=ae<=15?' urgency-red':'';urgencyHtml=`<span class="urgency-tag${rc}">Expires: ${ae}d</span>`;}}
+  }else urgencyHtml='<span class="urgency-tag tah-owned">TAH Owned</span>';
+  const podName=prop?prop.pod:'?';const podClass=podName==='Jose'?'badge-jose':'badge-gab';
+  return `<div class="card ${cls}" draggable="true" data-task-id="${task.id}" ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)" onclick="showDetail('${task.id}')">
+    <button class="remove-btn" onclick="removeFromSchedule('${task.id}',event)" title="Move to queue">×</button>
+    <div class="card-top"><span class="card-type">${short}</span><div class="card-badges">
+      <span class="badge ${podClass}">${podName==='Gabriel'?'Gab':podName}</span>
+      ${isCall?'<span class="badge badge-call">CALL</span>':'<span class="badge badge-text">TXT</span>'}
+      ${task.round>1?`<span class="badge badge-round">R${task.round}</span>`:''}${urgencyHtml}</div></div>
+    <div class="card-meta"><span class="card-address-meta">${addr}</span><span>${task.state}</span><span>${formatMoney(task.profit)}</span></div>
+    ${task.suggestion?`<div class="card-suggestion">💡 ${task.suggestion}</div>`:''}
+    ${state.taskNotes[task.id]?'<div class="card-note-indicator">📝 Note added</div>':''}
+  </div>`;
+}
+
+function renderBacklog(){
+  const container=document.getElementById('backlog');const filter=state.activeFilter;
+  let filtered=state.backlog.map(id=>state.taskMap[id]).filter(Boolean);
+  if(filter!=='all')filtered=filtered.filter(t=>t.priority===filter);
+  const groups={core:[],calling:[],reengagement:[],deep_push:[]};
+  filtered.forEach(t=>{if(groups[t.priority])groups[t.priority].push(t);});
+  const labels={core:'Round 1 — Core',calling:'Round 1 — Cold Calling',reengagement:'Round 2 — Re-engagement',deep_push:'Round 3 — Deep Push'};
+  let html='';for(const[key,tasks]of Object.entries(groups)){if(tasks.length===0)continue;if(filter!=='all'&&filter!==key)continue;
+    html+=`<div class="backlog-section"><div class="backlog-section-title">${labels[key]} (${tasks.length})</div>${tasks.map(t=>renderCard(t,true)).join('')}</div>`;}
+  if(!html)html='<div class="empty-day" style="padding:40px">No campaigns in this category</div>';
+  container.innerHTML=html;document.getElementById('backlog-count').textContent=state.backlog.length;
+}
+
+function updateStats(){
+  let ts=0,dwc=0;const asp=new Set();
+  for(const[ds,ids]of Object.entries(state.schedule)){ts+=ids.length;if(ids.length>0)dwc++;ids.forEach(id=>{const t=state.taskMap[id];if(t)asp.add(t.propertyId);});}
+  let tp=0;asp.forEach(pid=>{const p=state.propMap[pid];if(p)tp+=p.profit;});
+  document.getElementById('stat-props').textContent=RAW_DATA.properties.length;
+  document.getElementById('stat-scheduled').textContent=ts;
+  document.getElementById('stat-backlog').textContent=state.backlog.length;
+  document.getElementById('stat-avg').textContent=dwc>0?(ts/dwc).toFixed(1):'0';
+  document.getElementById('stat-profit').textContent='$'+tp.toLocaleString();
+}
+
+// ===== DRAG AND DROP =====
+function handleDragStart(e){const tid=e.target.closest('.card').dataset.taskId;state.dragTask=tid;state._wasDragged=true;e.dataTransfer.setData('text/plain',tid);e.dataTransfer.effectAllowed='move';setTimeout(()=>e.target.closest('.card').classList.add('dragging'),0);}
+function handleDragEnd(e){state.dragTask=null;document.querySelectorAll('.card.dragging').forEach(c=>c.classList.remove('dragging'));document.querySelectorAll('.cal-day.drop-target').forEach(c=>c.classList.remove('drop-target'));setTimeout(()=>{state._wasDragged=false;},100);}
+function handleDragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drop-target');}
+function handleDragLeave(e){e.currentTarget.classList.remove('drop-target');}
+function handleDrop(e){
+  e.preventDefault();e.currentTarget.classList.remove('drop-target');
+  const taskId=e.dataTransfer.getData('text/plain');const targetDate=e.currentTarget.dataset.date;if(!taskId||!targetDate)return;
+  for(const ds of Object.keys(state.schedule)){const idx=state.schedule[ds].indexOf(taskId);if(idx!==-1){state.schedule[ds].splice(idx,1);break;}}
+  const bIdx=state.backlog.indexOf(taskId);if(bIdx!==-1)state.backlog.splice(bIdx,1);
+  if(!state.schedule[targetDate])state.schedule[targetDate]=[];state.schedule[targetDate].push(taskId);
+  render();saveToFirestore();
+}
+function removeFromSchedule(taskId,e){
+  e.stopPropagation();for(const ds of Object.keys(state.schedule)){const idx=state.schedule[ds].indexOf(taskId);if(idx!==-1){state.schedule[ds].splice(idx,1);break;}}
+  state.backlog.unshift(taskId);render();saveToFirestore();
+}
+
+// ===== DETAIL MODAL =====
+function generateReasoning(task,prop){
+  const short=OUTREACH_SHORT[task.objective]||task.objective;const lines=[];
+  lines.push('<strong>Why this property?</strong> ');const wp=[];
+  if(task.round===1&&task.priority==='core'){const tm=(prop.missingCore?.length||0);if(tm>=3)wp.push(`This property has never had a full campaign launch — ${tm} core outreach types are still missing.`);else wp.push(`${short} has never been run for this property. This is a first-round coverage gap.`);}
+  else if(task.round===1&&task.priority==='calling')wp.push(`Cold texting for ${short} has been done, but cold calling hasn't. Adding the calling channel increases touch rate.`);
+  else if(task.round===2)wp.push('All first-round outreach types are complete. This is a Round 2 re-engagement campaign to widen the net.');
+  else if(task.round===3)wp.push('Round 3 deep push — maximum exposure needed to find a buyer.');
+  if(prop.expDays>0&&prop.expDays<=14)wp.push(`Only ${prop.expDays} days to expiration. Campaign attention needed before deadline.`);
+  else if(prop.expDays>0&&prop.expDays<=30)wp.push(`Expiration approaching (${prop.expDays} days) — adds urgency.`);
+  else if(prop.expDays===0)wp.push('TAH Owned — no deadline, but still needs to move.');
+  if(prop.profit>=30000)wp.push(`High-value deal at ${formatMoney(prop.profit)} profit.`);
+  else if(prop.profit>=15000)wp.push(`Solid ${formatMoney(prop.profit)} profit — worth sustained effort.`);
+  if(prop.dom>=100)wp.push(`${prop.dom} DOM — sitting too long, needs fresh approach.`);
+  lines.push(wp.join(' '));
+  lines.push(`<br><br><strong>Why ${short}?</strong> `);const or=[];
+  if(task.objective==='Realtors Reach Out')or.push(`Targets agents in ${prop.county} County. Realtors are force multipliers — one agent can bring multiple buyers.`);
+  else if(task.objective==='Buyer Base Reach Out')or.push(`Targets existing buyers in ${prop.state}. Warm leads with known purchase intent.`);
+  else if(task.objective==='Neighbor Reach Out')or.push('Targets property owners nearby who may want to expand their holdings.');
+  else if(task.objective==='InvestorBase Reach Out')or.push('Targets investors in neighboring cities. They evaluate on numbers, not emotion.');
+  if(task.channel==='Cold Calling')or.push('Cold calling allows real-time conversation and objection handling.');
+  if(task.suggestion)or.push(`💡 ${task.suggestion}`);
+  lines.push(or.join(' '));return lines.join('');
+}
+
+function showDetail(taskId){
+  if(state._wasDragged){state._wasDragged=false;return;}
+  const TODAY=getToday();const t=state.taskMap[taskId];if(!t)return;const prop=state.propMap[t.propertyId];if(!prop)return;
+  let scheduledOn='Not scheduled (in queue)';for(const[ds,ids]of Object.entries(state.schedule)){if(ids.includes(taskId)){scheduledOn=ds;break;}}
+  const short=OUTREACH_SHORT[t.objective]||t.objective;const cls=OUTREACH_CLASS[t.objective]||'realtor';const isCall=t.channel==='Cold Calling';
+  let urgTag='',adjustedExpDays=t.expDays;
+  if(t.expDays>0&&scheduledOn!=='Not scheduled (in queue)'){const sd=parseDate(scheduledOn);const df=daysBetween(TODAY,sd);adjustedExpDays=t.expDays-df;
+    if(adjustedExpDays<=0)urgTag='<span class="modal-tag t-critical">EXPIRED</span>';
+    else{const tc=adjustedExpDays<=15?'t-critical':'t-round';urgTag=`<span class="modal-tag ${tc}">Expires: ${adjustedExpDays}d</span>`;}}
+  else if(t.expDays>0){const tc=t.expDays<=15?'t-critical':'t-round';urgTag=`<span class="modal-tag ${tc}">Expires from today: ${t.expDays}d</span>`;}
+  else urgTag='<span class="modal-tag t-owned">TAH Owned</span>';
+  let historyHtml='';
+  if(prop.history&&prop.history.length>0){const rows=prop.history.map(h=>`<tr><td>${h.runDate}</td><td>${OUTREACH_SHORT[h.objective]||h.objective}</td><td>${h.channel||'—'}</td><td>${h.members||'—'}</td></tr>`).join('');
+    historyHtml=`<div class="history-scroll"><table class="modal-history-table"><thead><tr><th>Date</th><th>Outreach</th><th>Channel</th><th>Members</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+  else historyHtml='<div class="modal-history-empty">No campaigns run yet.</div>';
+  const reasoning=generateReasoning(t,prop);
+  document.getElementById('modal-content').innerHTML=`
+    <div class="modal-header"><div class="modal-header-top"><div><div class="modal-title">${t.address}</div><div class="modal-subtitle">${t.propertyId} · ${prop.salesHub||''} · ${prop.acreage} ac · ${prop.propertyType||''}</div></div>
+      <button class="modal-close-x" onclick="document.getElementById('modal').classList.remove('show')">×</button></div>
+      <div class="modal-tags"><span class="modal-tag t-${cls}">${short}</span>${isCall?'<span class="modal-tag t-call">Cold Calling</span>':'<span class="modal-tag t-text">Cold Texting</span>'}
+        ${t.round>1?`<span class="modal-tag t-round">Round ${t.round}</span>`:'<span class="modal-tag t-round">Round 1</span>'}${urgTag}</div></div>
+    <div class="modal-body">
+      <div class="modal-section"><div class="modal-section-title">Strategic Reasoning</div><div class="modal-reasoning"><span class="reason-label">Why this campaign?</span>${reasoning}</div></div>
+      <div class="modal-section"><div class="modal-section-title">Property Snapshot</div><div class="modal-grid">
+        <div class="modal-field"><span class="fl">State / County</span><span class="fv">${t.state} / ${t.county}</span></div>
+        <div class="modal-field"><span class="fl">Cash Price</span><span class="fv">${prop.price?'$'+Number(prop.price).toLocaleString():'—'}</span></div>
+        <div class="modal-field"><span class="fl">Profit</span><span class="fv ${t.profit>=0?'positive':'negative'}">${formatMoney(t.profit)}</span></div>
+        <div class="modal-field"><span class="fl">Acreage</span><span class="fv">${prop.acreage} ac</span></div>
+        <div class="modal-field"><span class="fl">DOM</span><span class="fv">${prop.dom}</span></div>
+        <div class="modal-field"><span class="fl">Expiration</span><span class="fv ${adjustedExpDays>0&&adjustedExpDays<=14?'negative':''}">${t.expDays===0?'TAH Owned':adjustedExpDays+'d'}</span></div>
+        <div class="modal-field"><span class="fl">POD</span><span class="fv">${prop.pod}</span></div>
+        <div class="modal-field"><span class="fl">Score</span><span class="fv highlight">${t.score}</span></div></div></div>
+      <div class="modal-section"><div class="modal-section-title">Listing Status</div><div class="modal-grid">
+        <div class="modal-field"><span class="fl">Status</span><span class="fv">${prop.listingStatus||'—'}</span></div>
+        <div class="modal-field"><span class="fl">MLS</span><span class="fv">${prop.listedMLS||'—'} ${prop.mls||''}</span></div>
+        <div class="modal-field"><span class="fl">Facebook</span><span class="fv">${prop.listedFB||'—'}</span></div>
+        <div class="modal-field"><span class="fl">Zillow Saves</span><span class="fv">${prop.zillowSaves||'—'}</span></div>
+        <div class="modal-field"><span class="fl">DD Status</span><span class="fv">${prop.ddStatus||'—'}</span></div>
+        <div class="modal-field"><span class="fl">Leads</span><span class="fv">${prop.totalLeads||'0'} (${prop.totalQualified||'0'} qualified)</span></div></div></div>
+      <div class="modal-section"><div class="modal-section-title">Campaign History (${prop.historyCount||0})</div>${historyHtml}</div>
+      <div class="modal-section"><div class="modal-section-title">Notes</div>
+        <textarea class="modal-notes" placeholder="Add notes..." oninput="state.taskNotes['${t.id}']=this.value" onblur="saveTaskNote('${t.id}',this.value)">${state.taskNotes[t.id]||''}</textarea></div>
+    </div><div class="modal-footer"><button class="modal-close-btn" onclick="document.getElementById('modal').classList.remove('show')">Close</button></div>`;
+  document.getElementById('modal').classList.add('show');
+}
+
+function saveTaskNote(taskId,value){state.taskNotes[taskId]=value;renderCalendar();renderBacklog();saveToFirestore();}
+
+// ===== EVENTS =====
+function bindEvents(){
+  document.querySelectorAll('.filter-btn[data-filter]').forEach(btn=>{btn.addEventListener('click',()=>{
+    document.querySelectorAll('.filter-btn[data-filter]').forEach(b=>b.classList.remove('active'));btn.classList.add('active');state.activeFilter=btn.dataset.filter;renderBacklog();});});
+  document.getElementById('prev-month').addEventListener('click',()=>{state.currentMonth.setMonth(state.currentMonth.getMonth()-1);renderCalendar();});
+  document.getElementById('next-month').addEventListener('click',()=>{state.currentMonth.setMonth(state.currentMonth.getMonth()+1);renderCalendar();});
+  document.getElementById('auto-schedule-btn').addEventListener('click',()=>{autoSchedule();render();saveToFirestore();});
+  document.getElementById('clear-btn').addEventListener('click',()=>{const all=[];for(const ids of Object.values(state.schedule))all.push(...ids);state.backlog=[...all,...state.backlog];for(const ds of Object.keys(state.schedule))state.schedule[ds]=[];render();saveToFirestore();});
+  document.getElementById('modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('show');});
+  const bl=document.getElementById('backlog');
+  bl.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move';});
+  bl.addEventListener('drop',e=>{e.preventDefault();const taskId=e.dataTransfer.getData('text/plain');if(!taskId)return;
+    for(const ds of Object.keys(state.schedule)){const idx=state.schedule[ds].indexOf(taskId);if(idx!==-1){state.schedule[ds].splice(idx,1);break;}}
+    if(!state.backlog.includes(taskId))state.backlog.unshift(taskId);render();saveToFirestore();});
+}
+
+// ===== BOOT =====
+async function boot(){
+  const saved=await loadFromFirestore();
+  if(saved&&saved.rawData&&saved.rawData.properties.length>0){
+    initFromData(saved.rawData,{schedule:saved.schedule,backlog:saved.backlog,notes:saved.notes});
+  }
+  // If no data in Firestore, show upload panel (it's visible by default)
+}
+boot();
+</script>
+</body>
+</html>
